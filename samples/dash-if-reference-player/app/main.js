@@ -1,5 +1,5 @@
 'use strict';
-
+var metricsArray  =[];
 var app = angular.module('DashPlayer', ['DashSourcesService', 'DashContributorsService', 'DashIFTestVectorsService', 'angular-flot']); /* jshint ignore:line */
 
 $(document).ready(function () {
@@ -35,7 +35,7 @@ angular.module('DashIFTestVectorsService', ['ngResource']).factory('dashifTestVe
 
 app.controller('DashController', ['$scope', '$window', 'sources', 'contributors', 'dashifTestVectors', function ($scope, $window, sources, contributors, dashifTestVectors) {
     $scope.selectedItem = {
-        url: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd'
+        url: 'https://nustreaming.github.io/streaming/bbb.mpd'
     };
 
     sources.query(function (data) {
@@ -183,7 +183,7 @@ app.controller('DashController', ['$scope', '$window', 'sources', 'contributors'
     $scope.additionalAbrRules = {};
     $scope.mediaSettingsCacheEnabled = true;
     $scope.metricsTimer = null;
-    $scope.updateMetricsInterval = 1000;
+    $scope.updateMetricsInterval = 8000;
     $scope.drmKeySystems = ['com.widevine.alpha', 'com.microsoft.playready', 'org.w3.clearkey'];
     $scope.drmKeySystem = '';
     $scope.drmLicenseURL = '';
@@ -238,7 +238,8 @@ app.controller('DashController', ['$scope', '$window', 'sources', 'contributors'
     $scope.conformanceViolations = [];
 
     var defaultExternalSettings = {
-        mpd: encodeURIComponent('https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd'),
+        // mpd: encodeURIComponent('https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd'),
+        mpd: encodeURIComponent('https://nustreaming.github.io/streaming/bbb.mpd'),
         loop: true,
         autoPlay: true,
         drmToday: false,
@@ -1492,7 +1493,7 @@ app.controller('DashController', ['$scope', '$window', 'sources', 'contributors'
     /** Copy a URL containing the current settings as query Parameters to the Clipboard */
     $scope.copyQueryUrl = function () {
         var currentExternalSettings = {
-            mpd: encodeURIComponent(decodeURIComponent($scope.selectedItem.url)),
+            mpd: encodeURIComponent(decodeURIComponent('https://nustreaming.github.io/streaming/bbb.mpd')),
             loop: $scope.loopSelected,
             autoPlay: $scope.autoPlaySelected,
             drmToday: $scope.drmToday,
@@ -1887,7 +1888,7 @@ app.controller('DashController', ['$scope', '$window', 'sources', 'contributors'
                 count: latencyTimes.length
             };
 
-            var downloadTimes = requestWindow.map(function (req) {
+            var downloadTimes = requestWindow.map(function (req) { //this
                 return Math.abs(req._tfinish.getTime() - req.tresponse.getTime()) / 1000;
             });
 
@@ -2001,22 +2002,25 @@ app.controller('DashController', ['$scope', '$window', 'sources', 'contributors'
     function updateMetrics(type) {
         var dashMetrics = $scope.player.getDashMetrics();
         var dashAdapter = $scope.player.getDashAdapter();
-
+        var obj = {};
         if (dashMetrics && $scope.currentStreamInfo) {
             var period = dashAdapter.getPeriodById($scope.currentStreamInfo.id);
             var periodIdx = period ? period.index : $scope.currentStreamInfo.index;
 
             var maxIndex = dashAdapter.getMaxIndexForBufferType(type, periodIdx);
             var repSwitch = dashMetrics.getCurrentRepresentationSwitch(type, true);
-            var bufferLevel = dashMetrics.getCurrentBufferLevel(type, true);
+            var bufferLevel = dashMetrics.getCurrentBufferLevel(type, true); //this3
+            obj['bufferLevel']=bufferLevel;
             var index = $scope.player.getQualityFor(type);
 
-            var bitrate = repSwitch ? Math.round(dashAdapter.getBandwidthForRepresentation(repSwitch.to, periodIdx) / 1000) : NaN;
+            var bitrate = repSwitch ? Math.round(dashAdapter.getBandwidthForRepresentation(repSwitch.to, periodIdx) / 1000) : NaN;//this1
+            obj['bitrate']=bitrate;
             var droppedFramesMetrics = dashMetrics.getCurrentDroppedFrames();
             var droppedFPS = droppedFramesMetrics ? droppedFramesMetrics.droppedFrames : 0;
             var liveLatency = 0;
             var playbackRate = 1.00
-            var mtp = $scope.player.getAverageThroughput(type);
+            var mtp = $scope.player.getAverageThroughput(type);//this2
+            obj['type']=type;
             if ($scope.isDynamic) {
                 liveLatency = $scope.player.getCurrentLiveLatency();
                 playbackRate = parseFloat($scope.player.getPlaybackRate().toFixed(2));
@@ -2035,8 +2039,11 @@ app.controller('DashController', ['$scope', '$window', 'sources', 'contributors'
                 $scope[type + 'Ratio'] = httpMetrics.ratio[type].low.toFixed(2) + ' | ' + httpMetrics.ratio[type].average.toFixed(2) + ' | ' + httpMetrics.ratio[type].high.toFixed(2);
                 $scope[type + 'Etp'] = (httpMetrics.etp[type] / 1000).toFixed(3);
                 $scope[type + 'Mtp'] = (mtp / 1000).toFixed(3);
+                obj['Download']=$scope[type + 'Download'].split('|')[0].trim();
+                obj['Latency'] = $scope[type + 'Latency'].split('|')[0].trim();
             }
-
+            if(type=='video')
+             metricsArray.push(obj);
             if ($scope.chartCount % 2 === 0) {
                 var time = getTimeForPlot();
                 $scope.plotPoint('buffer', type, bufferLevel, time);
@@ -2055,6 +2062,8 @@ app.controller('DashController', ['$scope', '$window', 'sources', 'contributors'
                 }
                 $scope.safeApply();
             }
+           
+            console.log(obj);
         }
     }
 
@@ -2449,3 +2458,31 @@ function legendLabelClickHandler(obj) { /* jshint ignore:line */
     scope.enableChartByName(id[1], id[0]);
     scope.safeApply();
 }
+
+
+var exportToCSV = function () {
+    let mCSV = ["bufferLevel", "bitrate", "type", "Download", "Latency"].join(
+        ","
+    );
+    mCSV = mCSV + "\n";
+    for (let obj of metricsArray) {
+        let csv = `${obj.bufferLevel},${obj.bitrate},${obj.type},${obj.Download},${obj.Latency}`;
+        mCSV = mCSV + "\n" + csv.toString();
+    }
+
+    var csvContent = "data:text/csv;charset=utf-8," + mCSV;
+
+    var encodedUri = encodeURI(csvContent);
+    var link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "[" + new Date().getTime() + "] log.csv");
+    document.body.appendChild(link); // Required for FF
+    link.click();
+    document.body.removeChild(link);
+};
+
+setInterval(() => { 
+
+    exportToCSV();
+
+}, 60*1000*5);
